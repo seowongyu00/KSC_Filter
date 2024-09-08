@@ -1,12 +1,104 @@
 import os
 import json
+import numpy as np
+import random
 
-def read_json_file(file_path):
-    with open(file_path, 'r') as file:
-        data = json.load(file)
-    return data
+def fixed_shuffle_list(input_list, seed=32):
+    shuffled_list = input_list.copy()
+    random.seed(seed)
+    random.shuffle(shuffled_list)
+    return shuffled_list
+
+def output_color_remove(output_grid):
+    for i in range(len(output_grid)):
+        for j in range(len(output_grid[i])):
+            color = np.max(output_grid[i][j])
+            for k in range(len(output_grid[i][j])):
+                for l in range(len(output_grid[i][j][k])):
+                    if output_grid[i][j][k][l] == color:
+                        output_grid[i][j][k][l] = 0
+    return output_grid
+  
+def add_noise(output_grid, noise_level=5.0):
+    for i in range(len(output_grid)):
+        for j in range(len(output_grid[i])):
+            coords = np.array(output_grid[i][j])
+            noisy_coords = coords + np.random.normal(scale=noise_level, size=coords.shape)
+            noisy_coords = np.clip(np.round(noisy_coords), 1, 10)
+            output_grid[i][j] = noisy_coords.astype(int)
+    return output_grid
+
+def swap_coordinates(output_grid):
+    for i in range(len(output_grid)):
+        for j in range(len(output_grid[i])):
+            coords = output_grid[i][j]
+            np.random.shuffle(coords)
+            output_grid[i][j] = coords
+    return output_grid
+
+def add_noise_task(output_grid, noise_level=5.0):
+    for i in range(len(output_grid)):
+        coords = np.array(output_grid[i])
+        noisy_coords = coords + np.random.normal(scale=noise_level, size=coords.shape)
+        noisy_coords = np.clip(np.round(noisy_coords), 1, 10)
+        output_grid[i] = noisy_coords.astype(int)
+    return output_grid
+  
+def swap_coordinates_task(coords):
+    np.random.shuffle(coords)
+    return coords
+
+def color_move(arr3):
+  for i in range(len(arr3)):
+    for j in range(len(arr3[i])):
+      for k in range(len(arr3[i][j])):
+        arr3[i][j][k] += 1
+  return arr3
+
+def collect_data(dataset):
+    inputs = [example['input'] for example in dataset]
+    outputs = [example['output'] for example in dataset]
+    return inputs, outputs
+
+def read_data_from_json(json_file_path, task):
+    try:
+        # JSON 파일을 열고 읽기 모드로 엽니다.
+        with open(json_file_path, "r") as json_file:
+            # JSON 데이터를 읽습니다.
+            data = json.load(json_file)
+
+            train_data = data[task]
+
+            return train_data
+    except FileNotFoundError:
+        print(f"File not found: {json_file_path}")
+        return None
+    except KeyError:
+        print(f"Key 'train' not found in the JSON data.")
+        return None
+    
+def combine_data_from_directory(directory_path, task):
+    combined_data = {
+        "input": [],
+        "output": [],
+        "task": []
+    }
+
+    for root, dirs, files in os.walk(directory_path):
+        for filename in files:
+            if filename.endswith(".json"):
+                json_file_path = os.path.join(root, filename)
+                data = collect_data(read_data_from_json(json_file_path, task))
+                if data is not None:
+                    combined_data["input"].append(color_move(data[0]))
+                    combined_data["output"].append(color_move(data[1]))
+                    combined_data["task"].append(os.path.basename(root))
+
+    return combined_data
 
 def pad(arr, n):
+  if isinstance(arr, np.ndarray):
+    arr = arr.tolist()
   if len(arr) < n:
     for i in range(n-len(arr)):
       arr.append([])
@@ -16,691 +108,185 @@ def pad(arr, n):
         arr[i].append(0)
   return arr
 
-def output_color_remove(output_grid, color):
-  for i in range(30):
-    for j in range(30):
-      if output_grid[i][j] == color:
-        output_grid[i][j] = 0
-
-base_folder = 'Old_Filter_Model/Research/concept_data'
-
-folder_list = os.listdir(base_folder)
-
-for folder_name in folder_list:
-    folder_path = os.path.join(base_folder, folder_name)
-
-    json_files = [f for f in os.listdir(folder_path) if f.endswith('.json')]
-
-    data_by_folder = {'input_data': [], 'output_data': [], 'input_size': [], 'output_size': []}
-
-    for json_file in json_files:
-        json_file_path = os.path.join(folder_path, json_file)
-        data = read_json_file(json_file_path)
-
-        train_data = data['train']
-        for item in train_data:
-            data_by_folder['input_data'].append(item['input'])
-            data_by_folder['output_data'].append(item['output'])
-            data_by_folder['input_size'].append([len(item['input']), len(item['input'][0])])
-            data_by_folder['output_size'].append([len(item['output']), len(item['output'][0])])
-
-        test_data = data['test']
-        for item in test_data:
-            data_by_folder['input_data'].append(item['input'])
-            data_by_folder['output_data'].append(item['output'])
-            data_by_folder['input_size'].append([len(item['input']), len(item['input'][0])])
-            data_by_folder['output_size'].append([len(item['output']), len(item['output'][0])])
-
-    output_file_path = os.path.join('Old_Filter_Model/Research/data', f'{folder_name}.json')
-
-    with open(output_file_path, 'w') as output_file:
-        json.dump(data_by_folder, output_file)
-
-json_file_path = 'Old_Filter_Model/Research/data/AboveBelow.json'
-
-# json 파일 읽어오기
-with open(json_file_path, 'r') as json_file:
-    data = json.load(json_file)
-
-# 데이터 수정 (예시: input_data, output_data에 padding을 적용)
-AboveBelow_input_data = data.get("input_data")
-AboveBelow_output_data = data.get("output_data")
-AboveBelow_input_size = data.get("input_size")
-AboveBelow_output_size = data.get("output_size")
-
-for i in range(len(AboveBelow_input_data)):
-    AboveBelow_input_data[i] = pad(AboveBelow_input_data[i], 30)
-    AboveBelow_output_data[i] = pad(AboveBelow_output_data[i], 30)
-
-# 수정된 데이터를 json 파일에 다시 저장
-data["input_data"] = AboveBelow_input_data
-data["output_data"] = AboveBelow_output_data
-# 다른 필요한 수정 작업 수행
-
-# 수정된 데이터를 저장할 json 파일 경로 (원하는 경로로 설정)
-output_json_file_path = 'Old_Filter_Model/Research/data/AboveBelow.json'
-
-# json 파일에 수정된 데이터 저장
-with open(output_json_file_path, 'w') as output_json_file:
-    json.dump(data, output_json_file)
-
-""" print(AboveBelow_input_data)
-print(AboveBelow_output_data)
-print(AboveBelow_input_size)
-print(AboveBelow_output_size)
- """
-# json 파일 경로
-json_file_path = 'Old_Filter_Model/Research/data/Center.json'
-
-# json 파일 읽어오기
-with open(json_file_path, 'r') as json_file:
-    data = json.load(json_file)
-
-# 데이터 수정 (예시: input_data, output_data에 padding을 적용)
-Center_input_data = data.get("input_data")
-Center_output_data = data.get("output_data")
-Center_input_size = data.get("input_size")
-Center_output_size = data.get("output_size")
-
-for i in range(len(Center_input_data)):
-    Center_input_data[i] = pad(Center_input_data[i], 30)
-    Center_output_data[i] = pad(Center_output_data[i], 30)
-
-# 수정된 데이터를 json 파일에 다시 저장
-data["input_data"] = Center_input_data
-data["output_data"] = Center_output_data
-# 다른 필요한 수정 작업 수행
-
-# 수정된 데이터를 저장할 json 파일 경로 (원하는 경로로 설정)
-output_json_file_path = 'Old_Filter_Model/Research/data/Center.json'
-
-# json 파일에 수정된 데이터 저장
-with open(output_json_file_path, 'w') as output_json_file:
-    json.dump(data, output_json_file)
-
-""" print(Center_input_data)
-print(Center_output_data)
-print(Center_input_size)
-print(Center_output_size)
- """
-json_file_path = 'Old_Filter_Model/Research/data/CleanUp.json'
-
-# json 파일 읽어오기
-with open(json_file_path, 'r') as json_file:
-    data = json.load(json_file)
-
-# 데이터 수정 (예시: input_data, output_data에 padding을 적용)
-CleanUp_input_data = data.get("input_data")
-CleanUp_output_data = data.get("output_data")
-CleanUp_input_size = data.get("input_size")
-CleanUp_output_size = data.get("output_size")
-
-for i in range(len(CleanUp_input_data)):
-    CleanUp_input_data[i] = pad(CleanUp_input_data[i], 30)
-    CleanUp_output_data[i] = pad(CleanUp_output_data[i], 30)
-
-# 수정된 데이터를 json 파일에 다시 저장
-data["input_data"] = CleanUp_input_data
-data["output_data"] = CleanUp_output_data
-# 다른 필요한 수정 작업 수행
-
-# 수정된 데이터를 저장할 json 파일 경로 (원하는 경로로 설정)
-output_json_file_path = 'Old_Filter_Model/Research/data/CleanUp.json'
-
-# json 파일에 수정된 데이터 저장
-with open(output_json_file_path, 'w') as output_json_file:
-    json.dump(data, output_json_file)
-
-
-""" print(CleanUp_input_data)
-print(CleanUp_output_data)
-print(CleanUp_input_size)
-print(CleanUp_output_size)
- """
-json_file_path = 'Old_Filter_Model/Research/data/CompleteShape.json'
-
-# json 파일 읽어오기
-with open(json_file_path, 'r') as json_file:
-    data = json.load(json_file)
-
-# 데이터 수정 (예시: input_data, output_data에 padding을 적용)
-CompleteShape_input_data = data.get("input_data")
-CompleteShape_output_data = data.get("output_data")
-CompleteShape_input_size = data.get("input_size")
-CompleteShape_output_size = data.get("output_size")
-
-for i in range(len(CompleteShape_input_data)):
-    CompleteShape_input_data[i] = pad(CompleteShape_input_data[i], 30)
-    CompleteShape_output_data[i] = pad(CompleteShape_output_data[i], 30)
-
-# 수정된 데이터를 json 파일에 다시 저장
-data["input_data"] = CompleteShape_input_data
-data["output_data"] = CompleteShape_output_data
-# 다른 필요한 수정 작업 수행
-
-# 수정된 데이터를 저장할 json 파일 경로 (원하는 경로로 설정)
-output_json_file_path = 'Old_Filter_Model/Research/data/CompleteShape.json'
-
-# json 파일에 수정된 데이터 저장
-with open(output_json_file_path, 'w') as output_json_file:
-    json.dump(data, output_json_file)
-
-""" print(CompleteShape_input_data)
-print(CompleteShape_output_data)
-print(CompleteShape_input_size)
-print(CompleteShape_output_size)
- """
-json_file_path = 'Old_Filter_Model/Research/data/Copy.json'
-
-# json 파일 읽어오기
-with open(json_file_path, 'r') as json_file:
-    data = json.load(json_file)
-
-# 데이터 수정 (예시: input_data, output_data에 padding을 적용)
-Copy_input_data = data.get("input_data")
-Copy_output_data = data.get("output_data")
-Copy_input_size = data.get("input_size")
-Copy_output_size = data.get("output_size")
-
-for i in range(len(Copy_input_data)):
-    Copy_input_data[i] = pad(Copy_input_data[i], 30)
-    Copy_output_data[i] = pad(Copy_output_data[i], 30)
-
-# 수정된 데이터를 json 파일에 다시 저장
-data["input_data"] = Copy_input_data
-data["output_data"] = Copy_output_data
-# 다른 필요한 수정 작업 수행
-
-# 수정된 데이터를 저장할 json 파일 경로 (원하는 경로로 설정)
-output_json_file_path = 'Old_Filter_Model/Research/data/Copy.json'
-
-# json 파일에 수정된 데이터 저장
-with open(output_json_file_path, 'w') as output_json_file:
-    json.dump(data, output_json_file)
-
-""" print(Copy_input_data)
-print(Copy_output_data)
-print(Copy_input_size)
-print(Copy_output_size)
- """
-json_file_path = 'Old_Filter_Model/Research/data/Count.json'
-
-# json 파일 읽어오기
-with open(json_file_path, 'r') as json_file:
-    data = json.load(json_file)
-
-# 데이터 수정 (예시: input_data, output_data에 padding을 적용)
-Count_input_data = data.get("input_data")
-Count_output_data = data.get("output_data")
-Count_input_size = data.get("input_size")
-Count_output_size = data.get("output_size")
-
-for i in range(len(Count_input_data)):
-    Count_input_data[i] = pad(Count_input_data[i], 30)
-    Count_output_data[i] = pad(Count_output_data[i], 30)
-
-# 수정된 데이터를 json 파일에 다시 저장
-data["input_data"] = Count_input_data
-data["output_data"] = Count_output_data
-# 다른 필요한 수정 작업 수행
-
-# 수정된 데이터를 저장할 json 파일 경로 (원하는 경로로 설정)
-output_json_file_path = 'Old_Filter_Model/Research/data/Count.json'
-
-# json 파일에 수정된 데이터 저장
-with open(output_json_file_path, 'w') as output_json_file:
-    json.dump(data, output_json_file)
-
-json_file_path = 'Old_Filter_Model/Research/data/ExtendToBoundary.json'
-
-# json 파일 읽어오기
-with open(json_file_path, 'r') as json_file:
-    data = json.load(json_file)
-
-# 데이터 수정 (예시: input_data, output_data에 padding을 적용)
-ExtendToBoundary_input_data = data.get("input_data")
-ExtendToBoundary_output_data = data.get("output_data")
-ExtendToBoundary_input_size = data.get("input_size")
-ExtendToBoundary_output_size = data.get("output_size")
-
-for i in range(len(ExtendToBoundary_input_data)):
-    ExtendToBoundary_input_data[i] = pad(ExtendToBoundary_input_data[i], 30)
-    ExtendToBoundary_output_data[i] = pad(ExtendToBoundary_output_data[i], 30)
-
-# 수정된 데이터를 json 파일에 다시 저장
-data["input_data"] = ExtendToBoundary_input_data
-data["output_data"] = ExtendToBoundary_output_data
-# 다른 필요한 수정 작업 수행
-
-# 수정된 데이터를 저장할 json 파일 경로 (원하는 경로로 설정)
-output_json_file_path = 'Old_Filter_Model/Research/data/ExtendToBoundary.json'
-
-# json 파일에 수정된 데이터 저장
-with open(output_json_file_path, 'w') as output_json_file:
-    json.dump(data, output_json_file)
-
-""" print(ExtendToBoundary_input_data)
-print(ExtendToBoundary_output_data)
-print(ExtendToBoundary_input_size)
-print(ExtendToBoundary_output_size) """
-
-json_file_path = 'Old_Filter_Model/Research/data/ExtractObjects.json'
-
-# json 파일 읽어오기
-with open(json_file_path, 'r') as json_file:
-    data = json.load(json_file)
-
-# 데이터 수정 (예시: input_data, output_data에 padding을 적용)
-ExtractObjects_input_data = data.get("input_data")
-ExtractObjects_output_data = data.get("output_data")
-ExtractObjects_input_size = data.get("input_size")
-ExtractObjects_output_size = data.get("output_size")
-
-for i in range(len(ExtractObjects_input_data)):
-    ExtractObjects_input_data[i] = pad(ExtractObjects_input_data[i], 30)
-    ExtractObjects_output_data[i] = pad(ExtractObjects_output_data[i], 30)
-
-# 수정된 데이터를 json 파일에 다시 저장
-data["input_data"] = ExtractObjects_input_data
-data["output_data"] = ExtractObjects_output_data
-# 다른 필요한 수정 작업 수행
-
-# 수정된 데이터를 저장할 json 파일 경로 (원하는 경로로 설정)
-output_json_file_path = 'Old_Filter_Model/Research/data/ExtractObjects.json'
-
-# json 파일에 수정된 데이터 저장
-with open(output_json_file_path, 'w') as output_json_file:
-    json.dump(data, output_json_file)
-
-""" print(ExtractObjects_input_data)
-print(ExtractObjects_output_data)
-print(ExtractObjects_input_size)
-print(ExtractObjects_output_size)
- """
-json_file_path = 'Old_Filter_Model/Research/data/FilledNotFilled.json'
-
-# json 파일 읽어오기
-with open(json_file_path, 'r') as json_file:
-    data = json.load(json_file)
-
-# 데이터 수정 (예시: input_data, output_data에 padding을 적용)
-FilledNotFilled_input_data = data.get("input_data")
-FilledNotFilled_output_data = data.get("output_data")
-FilledNotFilled_input_size = data.get("input_size")
-FilledNotFilled_output_size = data.get("output_size")
-
-for i in range(len(FilledNotFilled_input_data)):
-    FilledNotFilled_input_data[i] = pad(FilledNotFilled_input_data[i], 30)
-    FilledNotFilled_output_data[i] = pad(FilledNotFilled_output_data[i], 30)
-
-# 수정된 데이터를 json 파일에 다시 저장
-data["input_data"] = FilledNotFilled_input_data
-data["output_data"] = FilledNotFilled_output_data
-# 다른 필요한 수정 작업 수행
-
-# 수정된 데이터를 저장할 json 파일 경로 (원하는 경로로 설정)
-output_json_file_path = 'Old_Filter_Model/Research/data/FilledNotFilled.json'
-
-# json 파일에 수정된 데이터 저장
-with open(output_json_file_path, 'w') as output_json_file:
-    json.dump(data, output_json_file)
-
-""" print(FilledNotFilled_input_data)
-print(FilledNotFilled_output_data)
-print(FilledNotFilled_input_size)
-print(FilledNotFilled_output_size)
- """
-json_file_path = 'Old_Filter_Model/Research/data/HorizontalVertical.json'
-
-# json 파일 읽어오기
-with open(json_file_path, 'r') as json_file:
-    data = json.load(json_file)
-
-# 데이터 수정 (예시: input_data, output_data에 padding을 적용)
-HorizontalVertical_input_data = data.get("input_data")
-HorizontalVertical_output_data = data.get("output_data")
-HorizontalVertical_input_size = data.get("input_size")
-HorizontalVertical_output_size = data.get("output_size")
-
-for i in range(len(HorizontalVertical_input_data)):
-    HorizontalVertical_input_data[i] = pad(HorizontalVertical_input_data[i], 30)
-    HorizontalVertical_output_data[i] = pad(HorizontalVertical_output_data[i], 30)
-
-# 수정된 데이터를 json 파일에 다시 저장
-data["input_data"] = HorizontalVertical_input_data
-data["output_data"] = HorizontalVertical_output_data
-# 다른 필요한 수정 작업 수행
-
-# 수정된 데이터를 저장할 json 파일 경로 (원하는 경로로 설정)
-output_json_file_path = 'Old_Filter_Model/Research/data/HorizontalVertical.json'
-
-# json 파일에 수정된 데이터 저장
-with open(output_json_file_path, 'w') as output_json_file:
-    json.dump(data, output_json_file)
-
-""" print(HorizontalVertical_input_data)
-print(HorizontalVertical_output_data)
-print(HorizontalVertical_input_size)
-print(HorizontalVertical_output_size)
- """
-json_file_path = 'Old_Filter_Model/Research/data/InsideOutside.json'
-
-# json 파일 읽어오기
-with open(json_file_path, 'r') as json_file:
-    data = json.load(json_file)
-
-# 데이터 수정 (예시: input_data, output_data에 padding을 적용)
-InsideOutside_input_data = data.get("input_data")
-InsideOutside_output_data = data.get("output_data")
-InsideOutside_input_size = data.get("input_size")
-InsideOutside_output_size = data.get("output_size")
-
-for i in range(len(InsideOutside_input_data)):
-    InsideOutside_input_data[i] = pad(InsideOutside_input_data[i], 30)
-    InsideOutside_output_data[i] = pad(InsideOutside_output_data[i], 30)
-
-# 수정된 데이터를 json 파일에 다시 저장
-data["input_data"] = InsideOutside_input_data
-data["output_data"] = InsideOutside_output_data
-# 다른 필요한 수정 작업 수행
-
-# 수정된 데이터를 저장할 json 파일 경로 (원하는 경로로 설정)
-output_json_file_path = 'Old_Filter_Model/Research/data/InsideOutside.json'
-
-# json 파일에 수정된 데이터 저장
-with open(output_json_file_path, 'w') as output_json_file:
-    json.dump(data, output_json_file)
-
-""" print(InsideOutside_input_data)
-print(InsideOutside_output_data)
-print(InsideOutside_input_size)
-print(InsideOutside_output_size)
- """
-json_file_path = 'Old_Filter_Model/Research/data/MoveToBoundary.json'
-
-# json 파일 읽어오기
-with open(json_file_path, 'r') as json_file:
-    data = json.load(json_file)
-
-# 데이터 수정 (예시: input_data, output_data에 padding을 적용)
-MoveToBoundary_input_data = data.get("input_data")
-MoveToBoundary_output_data = data.get("output_data")
-MoveToBoundary_input_size = data.get("input_size")
-MoveToBoundary_output_size = data.get("output_size")
-
-for i in range(len(MoveToBoundary_input_data)):
-    MoveToBoundary_input_data[i] = pad(MoveToBoundary_input_data[i], 30)
-    MoveToBoundary_output_data[i] = pad(MoveToBoundary_output_data[i], 30)
-
-# 수정된 데이터를 json 파일에 다시 저장
-data["input_data"] = MoveToBoundary_input_data
-data["output_data"] = MoveToBoundary_output_data
-# 다른 필요한 수정 작업 수행
-
-# 수정된 데이터를 저장할 json 파일 경로 (원하는 경로로 설정)
-output_json_file_path = 'Old_Filter_Model/Research/data/MoveToBoundary.json'
-
-# json 파일에 수정된 데이터 저장
-with open(output_json_file_path, 'w') as output_json_file:
-    json.dump(data, output_json_file)
-
-""" print(MoveToBoundary_input_data)
-print(MoveToBoundary_output_data)
-print(MoveToBoundary_input_size)
-print(MoveToBoundary_output_size)
- """
-json_file_path = 'Old_Filter_Model/Research/data/Order.json'
-
-# json 파일 읽어오기
-with open(json_file_path, 'r') as json_file:
-    data = json.load(json_file)
-
-# 데이터 수정 (예시: input_data, output_data에 padding을 적용)
-Order_input_data = data.get("input_data")
-Order_output_data = data.get("output_data")
-Order_input_size = data.get("input_size")
-Order_output_size = data.get("output_size")
-
-for i in range(len(Order_input_data)):
-    Order_input_data[i] = pad(Order_input_data[i], 30)
-    Order_output_data[i] = pad(Order_output_data[i], 30)
-
-# 수정된 데이터를 json 파일에 다시 저장
-data["input_data"] = Order_input_data
-data["output_data"] = Order_output_data
-# 다른 필요한 수정 작업 수행
-
-# 수정된 데이터를 저장할 json 파일 경로 (원하는 경로로 설정)
-output_json_file_path = 'Old_Filter_Model/Research/data/Order.json'
-
-# json 파일에 수정된 데이터 저장
-with open(output_json_file_path, 'w') as output_json_file:
-    json.dump(data, output_json_file)
-
-""" 
-print(Order_input_data)
-print(Order_output_data)
-print(Order_input_size)
-print(Order_output_size)
- """
-json_file_path = 'Old_Filter_Model/Research/data/SameDifferent.json'
-
-# json 파일 읽어오기
-with open(json_file_path, 'r') as json_file:
-    data = json.load(json_file)
-
-# 데이터 수정 (예시: input_data, output_data에 padding을 적용)
-SameDifferent_input_data = data.get("input_data")
-SameDifferent_output_data = data.get("output_data")
-SameDifferent_input_size = data.get("input_size")
-SameDifferent_output_size = data.get("output_size")
-
-for i in range(len(SameDifferent_input_data)):
-    SameDifferent_input_data[i] = pad(SameDifferent_input_data[i], 30)
-    SameDifferent_output_data[i] = pad(SameDifferent_output_data[i], 30)
-
-# 수정된 데이터를 json 파일에 다시 저장
-data["input_data"] = SameDifferent_input_data
-data["output_data"] = SameDifferent_output_data
-# 다른 필요한 수정 작업 수행
-
-# 수정된 데이터를 저장할 json 파일 경로 (원하는 경로로 설정)
-output_json_file_path = 'Old_Filter_Model/Research/data/SameDifferent.json'
-
-# json 파일에 수정된 데이터 저장
-with open(output_json_file_path, 'w') as output_json_file:
-    json.dump(data, output_json_file)
-
-""" print(SameDifferent_input_data)
-print(SameDifferent_output_data)
-print(SameDifferent_input_size)
-print(SameDifferent_output_size)
- """
-json_files = [
-    'Old_Filter_Model/Research/data/AboveBelow.json',
-    'Old_Filter_Model/Research/data/Center.json',
-    'Old_Filter_Model/Research/data/CleanUp.json',
-    'Old_Filter_Model/Research/data/CompleteShape.json',
-    'Old_Filter_Model/Research/data/Copy.json',
-    'Old_Filter_Model/Research/data/Count.json',
-    'Old_Filter_Model/Research/data/ExtendToBoundary.json',
-    'Old_Filter_Model/Research/data/ExtractObjects.json',
-    'Old_Filter_Model/Research/data/FilledNotFilled.json',
-    'Old_Filter_Model/Research/data/HorizontalVertical.json',
-    'Old_Filter_Model/Research/data/InsideOutside.json',
-    'Old_Filter_Model/Research/data/MoveToBoundary.json',
-    'Old_Filter_Model/Research/data/Order.json',
-    'Old_Filter_Model/Research/data/SameDifferent.json'
-]
-
-combined_data = {"input": [], "output": [], "input_size": [], "output_size": [], "task": []}
-
-for json_file_path in json_files:
-    task_name = os.path.splitext(os.path.basename(json_file_path))[0]
-
-    with open(json_file_path, 'r') as file:
-        data = json.load(file)
-
-    combined_data["input"].append(data['input_data'])
-    combined_data["output"].append(data['output_data'])
-    combined_data["input_size"].append(data['input_size'])
-    combined_data["output_size"].append(data['output_size'])
-    combined_data["task"].append(task_name)
-
-concept_true = {"input": [], "output": [], "input_size": [], "output_size": [], "task": []}
-
-for i in range(len(combined_data["task"])):
-  for j in range(0, len(combined_data['input'][i]), 2):
-    concept_true["input"].append(combined_data['input'][i][j])
-    concept_true["output"].append(combined_data['output'][i][j])
-    concept_true["input_size"].append(combined_data['input_size'][i][j])
-    concept_true["output_size"].append(combined_data['output_size'][i][j])
-    concept_true["task"].append(1)
-
-""" print(concept_true["input"])
-print(concept_true["output"])
-print(concept_true["input_size"])
-print(concept_true["output_size"])
-print(concept_true["task"])
-"""
-print(len(concept_true["input"]))
-print(len(concept_true["output"]))
-print(len(concept_true["input_size"]))
-print(len(concept_true["output_size"]))
-print(len(concept_true["task"]))
- 
-# 최종 결과를 JSON 파일로 저장
-output_file_path = 'Old_Filter_Model/Research/data/Concept_True.json'
-with open(output_file_path, 'w') as output_file:
-    json.dump(concept_true, output_file)
-
-    import random
-
-json_file_path = 'Old_Filter_Model/Research/data/Concept_True.json'
-
-concept_false = {"input": [], "output": [], "input_size": [], "output_size": [], "task": []}
-
-with open(json_file_path, 'r') as json_file:
-  data = json.load(json_file)
-
-for j in range(0, 28):
-  for i in range(0, len(data["task"])-5*j, 25):
-    concept_false["input"].append(data["input"][i])
-    concept_false["output"].append(data["output"][i+5*j])
-    concept_false["input_size"].append(data["input_size"][i])
-    concept_false["output_size"].append(data["output_size"][i+5*j])
-    concept_false["task"].append(0)
-
-""" for i in range(0, len(data["task"]), 2):
-  concept_false["input"].append(data["input"][i])
-  concept_false["output"].append(output_color_remove(data["output"][i], random.randint(0, 9)))
-  concept_false["input_size"].append(data["input_size"][i])
-  concept_false["output_size"].append(data["output_size"][i])
-  concept_false["task"].append(0)
- """
-
-""" print(concept_false["input"])
-print(concept_false["output"])
-print(concept_false["input_size"])
-print(concept_false["output_size"])
-print(concept_false["task"])
-"""
-print(len(concept_false["input"]))
-print(len(concept_false["output"]))
-print(len(concept_false["input_size"]))
-print(len(concept_false["output_size"]))
-print(len(concept_false["task"]))
-
-
-# 최종 결과를 JSON 파일로 저장
-output_file_path = 'Old_Filter_Model/Research/data/Concept_False.json'
-with open(output_file_path, 'w') as output_file:
-    json.dump(concept_false, output_file)
-
-json_file_path = 'Old_Filter_Model/Research/data/Concept_False.json'
-add_json_path = 'Old_Filter_Model/Research/data/Concept_True.json'
-
-concept_tf = {"input": [], "output": [], "input_size": [], "output_size": [], "task": []}
-
-with open(json_file_path, 'r') as json_file:
-  data = json.load(json_file)
-
-with open(add_json_path, 'r') as json_file:
-  add_data = json.load(json_file)
-
-concept_tf["input"] = data["input"]
-concept_tf["output"] = data["output"]
-concept_tf["input_size"] = data["input_size"]
-concept_tf["output_size"] = data["output_size"]
-concept_tf["task"] = data["task"]
-
-for i in range(len(add_data["input"])):
-  concept_tf["input"].insert(int(2.15*i), add_data["input"][i])
-  concept_tf["output"].insert(int(2.15*i), add_data["output"][i])
-  concept_tf["input_size"].insert(int(2.15*i), add_data["input_size"][i])
-  concept_tf["output_size"].insert(int(2.15*i), add_data["output_size"][i])
-  concept_tf["task"].insert(int(2.15*i), add_data["task"][i])
-
-""" print(concept_tf["input"])
-print(concept_tf["output"])
-print(concept_tf["input_size"])
-print(concept_tf["output_size"])
-print(concept_tf["task"])
-
-print(len(concept_tf["input"]))
-print(len(concept_tf["output"]))
-print(len(concept_tf["input_size"]))
-print(len(concept_tf["output_size"]))
-print(len(concept_tf["task"]))
- """
-
-# 최종 결과를 JSON 파일로 저장
-output_file_path = 'Old_Filter_Model/Research/data/Concept_TF.json'
-with open(output_file_path, 'w') as output_file:
-    json.dump(concept_tf, output_file)
-
-json_file_path = 'Old_Filter_Model/Research/data/Concept_TF.json'
-
-with open(json_file_path, 'r') as json_file:
-    data = json.load(json_file)
-
-# 데이터 길이 계산
-total_len = len(data['input'])
-train_len = int(total_len * 0.85)
-valid_len = total_len - train_len
-
-train_concept = {"input": [], "output": [], "input_size": [], "output_size": [], "task": []}
-valid_concept = {"input": [], "output": [], "input_size": [], "output_size": [], "task": []}
-
-# 데이터 분할
-
-train_concept['input'] = data['input'][:train_len]
-train_concept['output'] = data['output'][:train_len]
-train_concept['input_size'] = data['input_size'][:train_len]
-train_concept['output_size'] = data['output_size'][:train_len]
-train_concept['task'] = data['task'][:train_len]
-
-valid_concept['input'] = data['input'][train_len:]
-valid_concept['output'] = data['output'][train_len:]
-valid_concept['input_size'] = data['input_size'][train_len:]
-valid_concept['output_size'] = data['output_size'][train_len:]
-valid_concept['task'] = data['task'][train_len:]
-
-""" print(train_concept["input"])
-print(train_concept["output"])
-print(train_concept["input_size"])
-print(train_concept["output_size"])
-print(train_concept["task"])
-print(valid_concept["input"])
-print(valid_concept["output"])
-print(valid_concept["input_size"])
-print(valid_concept["output_size"])
-print(valid_concept["task"])
- """
-output_file_path = 'Old_Filter_Model/Research/data/Train_Concept.json'
-with open(output_file_path, 'w') as output_file:
-    json.dump(train_concept, output_file)
-
-output_file_path = 'Old_Filter_Model/Research/data/Valid_Concept.json'
-with open(output_file_path, 'w') as output_file:
-    json.dump(valid_concept, output_file)
+def split_data(data, train_ratio):
+    total_samples = len(data["input"])
+    train_samples = int(total_samples * train_ratio)
+
+    train_data = {
+        "input": data["input"][:train_samples],
+        "output": data["output"][:train_samples],
+        "input_size": data["input_size"][:train_samples],
+        "output_size": data["output_size"][:train_samples],
+        "task": data["task"][:train_samples],
+    }
+
+    valid_data = {
+        "input": data["input"][train_samples:],
+        "output": data["output"][train_samples:],
+        "input_size": data["input_size"][train_samples:],
+        "output_size": data["output_size"][train_samples:],
+        "task": data["task"][train_samples:],
+    }
+
+    return train_data, valid_data
+
+top_folder_path = "/home/jovyan/Desktop/Wongyu/concept_data"
+arc_folder_path = "/home/jovyan/Desktop/Wongyu/ARC_data"
+
+combined_arc_data = combine_data_from_directory(arc_folder_path, "train")
+combined_train_data = combine_data_from_directory(top_folder_path, "train")
+combined_test_data = combine_data_from_directory(top_folder_path, "test")
+
+combined_all_data = {"input": [], "output": [], "input_size": [], "output_size": [], "task": []}
+combined_false_data = {"input": [], "output": [], "input_size": [], "output_size": [], "task": []}
+
+combined_all_data['task'].extend(combined_train_data['task'])
+combined_all_data['task'].extend(combined_test_data['task'])
+combined_all_data['task'].extend(combined_arc_data['task'])
+
+combined_false_data['task'].extend(combined_train_data['task'])
+combined_false_data['task'].extend(combined_test_data['task'])
+
+combined_false_data['task'].extend(combined_train_data['task'])
+combined_false_data['task'].extend(combined_test_data['task'])
+
+# combined_false_data['task'].extend(combined_train_data['task'])
+# combined_false_data['task'].extend(combined_test_data['task'])
+
+#-----------------------Not task data------------------------#
+
+combined_all_data['input'].extend(combined_train_data['input'])
+combined_all_data['input'].extend(combined_test_data['input'])
+
+combined_all_data['output'].extend(combined_train_data['output'])
+combined_all_data['output'].extend(combined_test_data['output'])
+
+combined_all_data['input'].extend(combined_arc_data['input'])
+combined_all_data['output'].extend(combined_arc_data['output'])
+
+#------------------------false data--------------------------#
+
+# combined_false_data['input'].extend(combined_train_data['input'])
+# combined_false_data['input'].extend(combined_test_data['input'])
+
+# combined_false_data['output'].extend(output_color_remove(combined_train_data['output']))
+# combined_false_data['output'].extend(output_color_remove(combined_test_data['output']))
+
+combined_false_data['input'].extend(combined_train_data['input'])
+combined_false_data['input'].extend(combined_test_data['input'])
+
+combined_false_data['output'].extend(combined_train_data['output'])
+combined_false_data['output'].extend(combined_test_data['output'])
+
+combined_false_data['input'].extend(combined_train_data['input'])
+combined_false_data['input'].extend(combined_test_data['input'])
+
+combined_false_data['output'].extend(combined_train_data['output'])
+combined_false_data['output'].extend(combined_test_data['output'])
+
+for i in range(len(combined_false_data['task'])):
+  t = combined_false_data['task'][i]
+  if t == 'Center':
+     combined_false_data['input'][i] = swap_coordinates_task(combined_false_data['input'][i])
+  elif t == 'MoveToBoundary':
+     combined_false_data['input'][i] = swap_coordinates_task(combined_false_data['input'][i])
+  elif t == 'FilledNotFilled':
+     combined_false_data['input'][i] = swap_coordinates_task(add_noise_task(combined_false_data['input'][i]))
+  elif t == 'InsideOutside':
+     combined_false_data['input'][i] = swap_coordinates_task(combined_false_data['input'][i])
+  elif t == 'AboveBelow':
+     combined_false_data['input'][i] = swap_coordinates_task(combined_false_data['input'][i])
+  elif t == 'ExtractObjects':
+     combined_false_data['input'][i] = swap_coordinates_task(add_noise_task(combined_false_data['input'][i]))
+  elif t == 'Order':
+     combined_false_data['input'][i] = swap_coordinates_task(add_noise_task(combined_false_data['input'][i]))
+  elif t == 'HorizontalVertical':
+     combined_false_data['input'][i] = add_noise_task(add_noise_task(combined_false_data['input'][i]))
+  elif t == 'SameDifferent':
+     combined_false_data['input'][i] = add_noise_task(add_noise_task(combined_false_data['input'][i]))
+  elif t == 'ExtendToBoundary':
+     combined_false_data['input'][i] = swap_coordinates_task(combined_false_data['input'][i])
+  elif t == 'CleanUp':
+     combined_false_data['input'][i] = swap_coordinates_task(combined_false_data['input'][i])
+  elif t == 'Copy':
+     combined_false_data['input'][i] = add_noise_task(add_noise_task(combined_false_data['input'][i]))
+  elif t == 'Count':
+     combined_false_data['input'][i] = add_noise_task(add_noise_task(combined_false_data['input'][i]))
+  elif t == 'CompleteShape':
+     combined_false_data['input'][i] = swap_coordinates_task(add_noise_task(combined_false_data['input'][i]))
+  elif t == 'TopBottom2D':
+     combined_false_data['input'][i] = swap_coordinates_task(add_noise_task(combined_false_data['input'][i]))
+  elif t == 'TopBottom3D':
+     combined_false_data['input'][i] = swap_coordinates_task(add_noise_task(combined_false_data['input'][i]))
+  else:
+     print("something has not been changed.")
+#------------------------false data--------------------------#
+
+for i in range(len(combined_all_data['input'])):
+  t_temp_input = []
+  t_temp_output = []
+  for j in range(len(combined_all_data['input'][i])):
+    row = len(combined_all_data['input'][i][j])
+    column = len(combined_all_data['input'][i][j][0])
+    t_temp_input.append([row, column])
+
+    row = len(combined_all_data['output'][i][j])
+    column = len(combined_all_data['output'][i][j][0])
+    t_temp_output.append([row, column])
+    
+  combined_all_data['input_size'].append(t_temp_input)
+  combined_all_data['output_size'].append(t_temp_output)
+
+for i in range(len(combined_false_data['input'])):
+  f_temp_input = []
+  f_temp_output = []
+  for j in range(len(combined_false_data['input'][i])):
+    row = len(combined_false_data['input'][i][j])
+    column = len(combined_false_data['input'][i][j][0])
+    f_temp_input.append([row, column])
+
+    row = len(combined_false_data['output'][i][j])
+    column = len(combined_false_data['output'][i][j][0])
+    f_temp_output.append([row, column])
+
+  combined_false_data['input_size'].append(f_temp_input)
+  combined_false_data['output_size'].append(f_temp_output)
+
+for i in range(len(combined_all_data['task'])):
+  combined_all_data['task'][i] = 1
+
+for i in range(len(combined_false_data['task'])):
+  combined_false_data['task'][i] = 0  
+  
+for i in range(len(combined_false_data['task'])):
+  combined_all_data["input"].insert(int(2.16*i), combined_false_data["input"][i])
+  combined_all_data["output"].insert(int(2.16*i), combined_false_data["output"][i])
+  combined_all_data["input_size"].insert(int(2.16*i), combined_false_data["input_size"][i])
+  combined_all_data["output_size"].insert(int(2.16*i), combined_false_data["output_size"][i])
+  combined_all_data["task"].insert(int(2.16*i), combined_false_data["task"][i])
+
+for i in range(len(combined_all_data['input'])):
+  for j in range(len(combined_all_data['input'][i])):
+    combined_all_data['input'][i][j] = pad(combined_all_data['input'][i][j], 30)
+    combined_all_data['output'][i][j] = pad(combined_all_data['output'][i][j], 30)
+
+combined_all_data["input"] = fixed_shuffle_list(combined_all_data["input"], 32)
+combined_all_data["output"] = fixed_shuffle_list(combined_all_data["output"], 32)
+combined_all_data["input_size"] = fixed_shuffle_list(combined_all_data["input_size"], 32)
+combined_all_data["output_size"] = fixed_shuffle_list(combined_all_data["output_size"], 32)
+combined_all_data["task"] = fixed_shuffle_list(combined_all_data["task"], 32)
+
+output_all_directory = "/home/jovyan/Desktop/Wongyu/multiple_data/all_data_for_filter.json"
+output_train_directory = "/home/jovyan/Desktop/Wongyu/multiple_data/train_data_for_filter.json"
+output_valid_directory = "/home/jovyan/Desktop/Wongyu/multiple_data/valid_data_for_filter.json"
+
+combined_train_data, combined_valid_data = split_data(combined_all_data, 0.85)
+
+with open(output_all_directory, "w") as json_file:
+    json.dump(combined_all_data, json_file)
+    
+with open(output_train_directory, "w") as json_file:
+    json.dump(combined_train_data, json_file)
+    
+with open(output_valid_directory, "w") as json_file:
+    json.dump(combined_valid_data, json_file)
